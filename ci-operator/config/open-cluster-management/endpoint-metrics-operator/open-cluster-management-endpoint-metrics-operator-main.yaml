@@ -3,7 +3,10 @@ base_images:
     name: ubi-minimal
     namespace: ocp
     tag: "8"
-binary_build_commands: make -f Makefile.prow build
+  open-cluster-management_builder_go1.15-linux-amd64:
+    name: builder
+    namespace: open-cluster-management
+    tag: go1.15-linux-amd64
 build_root:
   image_stream_tag:
     name: builder
@@ -13,39 +16,32 @@ images:
 - dockerfile_path: Dockerfile.prow
   from: base
   inputs:
-    bin:
-      paths:
-      - destination_dir: ./build/_output/bin
-        source_path: /go/src/github.com/open-cluster-management/endpoint-metrics-operator/build/_output/bin/endpoint-monitoring-operator
+    open-cluster-management_builder_go1.15-linux-amd64:
+      as:
+      - registry.ci.openshift.org/open-cluster-management/builder:go1.15-linux-amd64
   to: endpoint-metrics-operator
 promotion:
   name: "2.3"
   namespace: open-cluster-management
 resources:
   '*':
+    limits:
+      memory: 6Gi
     requests:
       cpu: 100m
-      memory: 200Mi
+      memory: 1Gi
 tag_specification:
   name: "4.7"
   namespace: ocp
+test_binary_build_commands: "true"
 tests:
-- as: unit
+- as: test-unit
   commands: |
     export SELF="make -f Makefile.prow"
     make -f Makefile.prow test-unit
   container:
     from: src
-- as: sonar
-  commands: |
-    export SELF="make -f Makefile.prow"
-    make -f Makefile.prow sonar/go/prow
-  container:
-    from: src
-  secrets:
-  - mount_path: /etc/sonarcloud/
-    name: acm-sonarcloud-token
-- as: e2e
+- as: test-e2e
   steps:
     cluster_profile: aws
     test:
@@ -66,6 +62,15 @@ tests:
           cpu: 100m
           memory: 200Mi
     workflow: openshift-e2e-aws
+- as: sonarcloud
+  commands: |
+    export SELF="make -f /opt/build-harness/Makefile.prow"
+    make -f /opt/build-harness/Makefile.prow sonar/go/prow
+  container:
+    from: src
+  secrets:
+  - mount_path: /etc/sonarcloud/
+    name: acm-sonarcloud-token
 zz_generated_metadata:
   branch: main
   org: open-cluster-management
